@@ -91,6 +91,8 @@
     </div>
     <div id="question" style="margin-top:20px; font-size:20px;"></div>
     <div id="options" style="margin-top:20px;"></div>
+    <!-- "다음문제" 버튼: 초기에는 숨김 -->
+    <button id="nextButton" class="hidden">다음문제</button>
   </div>
 
   <!-- 게임 오버 화면 -->
@@ -115,9 +117,7 @@
     let scorePerQuestion = 0;
     let difficulty = "하";
     let playerName = "";
-    let poolExhausted = false; // 초기 문제 집합을 다 쓴 후엔 랜덤 모드로 전환
-
-    // 문제 배열 (총 48문제: 타입1 16문제, 타입2 16문제, 타입3 16문제)
+    // 문제 배열 (총 48문제: 타입1 16문제, 타입2 8문제, 타입3 16문제)
     questions = [
       // [타입 1 문제: a(식) 문제]
       {
@@ -355,7 +355,7 @@
           scorePerQuestion = 10;
           break;
       }
-      // 섞은 문제 배열 (처음엔 전체 순서를 섞음)
+      // 문제 배열 전체를 섞음
       questions = shuffleArray(questions);
       currentQuestionIndex = 0;
       score = 0;
@@ -367,7 +367,7 @@
       document.getElementById("startScreen").classList.add("hidden");
       document.getElementById("gameOverScreen").classList.add("hidden");
       document.getElementById("gameScreen").classList.remove("hidden");
-      // 시작 시 전체 타이머 시작
+      // 전체 경과 시간 타이머 시작
       overallTimer = setInterval(function(){
         overallTime++;
         document.getElementById("elapsedTime").innerText = overallTime + "초";
@@ -376,53 +376,84 @@
       showNextQuestion();
     });
 
-    // 문제 표시 함수
-    function showNextQuestion() {
-      // 만약 문제집을 모두 소진했다면, 다시 랜덤 순서로 문제 출제
+    // "다음문제" 버튼 클릭 시 처리
+    document.getElementById("nextButton").addEventListener("click", function() {
+      // 다음 문제 인덱스로 이동
+      currentQuestionIndex++;
+      // 남은 문제가 없으면 다시 섞어서 반복
       if (currentQuestionIndex >= questions.length) {
         questions = shuffleArray(questions);
         currentQuestionIndex = 0;
       }
+      showNextQuestion();
+    });
+
+    // 문제 표시 함수
+    function showNextQuestion() {
+      // 이전 문제의 타이머가 남아있을 수 있으니 정리
+      clearInterval(questionTimer);
+      
+      // "다음문제" 버튼 숨기기
+      const nextButton = document.getElementById("nextButton");
+      nextButton.classList.add("hidden");
+      nextButton.disabled = true;
+
       const q = questions[currentQuestionIndex];
-      // 섞은 보기 배열 (각 문제마다 보기 순서를 섞음)
+      // 보기 섞기
       const opts = shuffleArray(q.options.slice());
       const questionDiv = document.getElementById("question");
       questionDiv.innerHTML = "<p>" + q.text + "</p>";
       const optionsDiv = document.getElementById("options");
       optionsDiv.innerHTML = "";
+
+      // 보기 버튼 생성
       opts.forEach(function(opt) {
         const btn = document.createElement("button");
         btn.innerHTML = opt;
         btn.addEventListener("click", function() {
-          // 사용자가 정답 선택 시 타이머 중단
+          // 사용자 선택 시 타이머 중단
           clearInterval(questionTimer);
-          // 정답 비교
+          // 선택 후에는 다른 보기 선택 못하도록 모두 비활성화
+          disableOptionButtons();
+
           if (opt === q.correct) {
             score += scorePerQuestion;
             document.getElementById("score").innerText = score;
-            currentQuestionIndex++;
-            showNextQuestion();
+            alert("정답입니다!");
           } else {
-            // 오답이면 남은 기회를 1 차감 후 처리
             lives--;
             document.getElementById("lives").innerText = lives;
             alert("오답입니다. 정답은 " + q.correct + " 입니다.");
             if (lives <= 0) {
               endGame();
-            } else {
-              currentQuestionIndex++;
-              showNextQuestion();
+              return;
             }
           }
+          // 정답 혹은 오답 처리 후, "다음문제" 버튼 활성화
+          nextButton.disabled = false;
+          nextButton.classList.remove("hidden");
         });
         optionsDiv.appendChild(btn);
       });
-      // 렌더링 후 MathJax 호출
+
+      // MathJax 렌더링
       MathJax.typeset();
-      // 타임 제한이 있는 경우 에너지바 및 문제 타이머 시작
+
+      // 시간 제한이 있으면 문제 타이머 시작
       if (questionTimeLimit !== Infinity) {
         startQuestionTimer();
+      } else {
+        // 하 난이도면 에너지바 가득 채워두기
+        document.getElementById("energyBar").style.width = "100%";
       }
+    }
+
+    // 보기 버튼 비활성화 함수
+    function disableOptionButtons() {
+      const optionButtons = document.querySelectorAll("#options button");
+      optionButtons.forEach((btn) => {
+        btn.disabled = true;
+      });
     }
 
     // 문제 타이머 및 에너지바 처리 함수
@@ -436,16 +467,19 @@
         energyBar.style.width = percent + "%";
         if (timeLeft <= 0) {
           clearInterval(questionTimer);
+          // 시간 초과 처리
+          alert("시간 초과! 다음 문제로 넘어갑니다.");
           lives--;
           document.getElementById("lives").innerText = lives;
+          disableOptionButtons();
           if (lives <= 0) {
-            alert("시간 초과로 기회가 모두 소진되었습니다.");
             endGame();
-          } else {
-            alert("시간 초과! 다음 문제로 넘어갑니다.");
-            currentQuestionIndex++;
-            showNextQuestion();
+            return;
           }
+          // "다음문제" 버튼 활성화
+          const nextButton = document.getElementById("nextButton");
+          nextButton.disabled = false;
+          nextButton.classList.remove("hidden");
         }
       }, 100);
     }
@@ -460,7 +494,7 @@
       document.getElementById("finalTime").innerText = overallTime;
     }
 
-    // 점수 전송 함수 (제공된 코드)
+    // 점수 전송 함수
     async function saveData(game, name, score, elapsedTime) {
       const FUNCTION_URL = "https://us-central1-record-f420d.cloudfunctions.net/report";
 
